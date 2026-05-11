@@ -40,6 +40,25 @@ cd ../openvla
 pip install -r experiments/robot/libero/libero_requirements.txt
 ```
 
+### Google Colab L4 dependency pins
+
+For Colab/L4 rollout collection, use `requirements-colab-l4.in` as a constraints file so later installs do not upgrade
+NumPy to 2.x, which breaks the TensorFlow 2.15 stack used by the rollout preprocessing code.
+
+```
+cd /content/openvla
+pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+pip install -c requirements-colab-l4.in -e .
+
+cd /content/LIBERO
+pip install -c /content/openvla/requirements-colab-l4.in -e .
+
+cd /content/openvla
+pip install -c requirements-colab-l4.in -r experiments/robot/libero/libero_requirements.txt
+
+python -m pip install --force-reinstall -c requirements-colab-l4.in numpy ml-dtypes tensorflow
+```
+
 
 ## Generate rollouts on LIBERO task suite
 
