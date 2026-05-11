@@ -40,8 +40,37 @@ cd ../openvla
 pip install -r experiments/robot/libero/libero_requirements.txt
 ```
 
+### Google Colab L4 dependency pins
+
+For Colab/L4 rollout collection, use `requirements-colab-l4.in` as a constraints file so later installs do not upgrade
+NumPy to 2.x, which breaks the TensorFlow 2.15 stack used by the rollout preprocessing code.
+
+```
+cd /content/openvla
+pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+pip install -c requirements-colab-l4.in -e .
+
+cd /content/LIBERO
+pip install -c /content/openvla/requirements-colab-l4.in -e .
+
+cd /content/openvla
+pip install -c requirements-colab-l4.in -r experiments/robot/libero/libero_requirements.txt
+
+python -m pip install --force-reinstall -c requirements-colab-l4.in numpy ml-dtypes tensorflow
+```
+
 
 ## Generate rollouts on LIBERO task suite
+
+When `--output_hidden_states True`, each rollout saves a matching `.pkl` next to the `.mp4` and `.csv` under:
+
+```
+{save_root}/{run_id_note}/{task_suite_name}/task{task_id}--ep{episode_idx}--succ{0_or_1}.pkl
+```
+
+The `.pkl` contains `hidden_states` with shape `(T, action_tokens, num_selected_layers * hidden_dim)`. For the
+32-layer OpenVLA model, the selected one-based transformer layers are `[1, 4, 8, 12, 16, 20, 24, 28, 32]`; these are
+also saved in `hidden_state_layers`, with `hidden_state_dim_per_layer` recording the per-layer width.
 
 ```
 # Generate rollouts with 1 sample per timestep on LIBERO-10

@@ -55,6 +55,7 @@ from experiments.robot.unc_utils import (
 
 DEFAULT_HIDDEN_STATE_LAYER_STRIDE = 4
 
+
 def get_hidden_state_layer_numbers(num_transformer_layers: int) -> tuple[int, ...]:
     """Return one-based transformer layer numbers to save from HF hidden-state tuples."""
     if num_transformer_layers < 1:

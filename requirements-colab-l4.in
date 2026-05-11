@@ -1,0 +1,31 @@
+# Compatibility pins for Google Colab L4 rollout collection.
+#
+# Use this file as a pip constraints file after installing the CUDA PyTorch
+# wheels for Colab, e.g.:
+#
+#   pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 --index-url https://download.pytorch.org/whl/cu121
+#   pip install -c requirements-colab-l4.in -e .
+#   pip install -c requirements-colab-l4.in -r experiments/robot/libero/libero_requirements.txt
+#
+# The NumPy / TensorFlow / ml-dtypes pins avoid the NumPy 2.x ABI crash:
+# AttributeError: _ARRAY_API not found
+
+numpy==1.26.4
+ml-dtypes==0.2.0
+
+tensorflow==2.15.0
+tensorflow-datasets==4.9.3
+tensorflow-graphics==2021.12.3
+
+torch==2.2.0
+torchvision==0.17.0
+torchaudio==2.2.0
+
+draccus==0.8.0
+peft==0.11.1
+sentencepiece==0.1.99
+timm==0.9.10
+tokenizers==0.19.1
+transformers==4.40.1
+
+robosuite==1.4.0
