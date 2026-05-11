@@ -43,6 +43,16 @@ pip install -r experiments/robot/libero/libero_requirements.txt
 
 ## Generate rollouts on LIBERO task suite
 
+When `--output_hidden_states True`, each rollout saves a matching `.pkl` next to the `.mp4` and `.csv` under:
+
+```
+{save_root}/{run_id_note}/{task_suite_name}/task{task_id}--ep{episode_idx}--succ{0_or_1}.pkl
+```
+
+The `.pkl` contains `hidden_states` with shape `(T, action_tokens, num_selected_layers * hidden_dim)`. For the
+32-layer OpenVLA model, the selected one-based transformer layers are `[1, 4, 8, 12, 16, 20, 24, 28, 32]`; these are
+also saved in `hidden_state_layers`, with `hidden_state_dim_per_layer` recording the per-layer width.
+
 ```
 # Generate rollouts with 1 sample per timestep on LIBERO-10
 # Use `--use_wandb True` if you want to log
