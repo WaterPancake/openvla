@@ -53,6 +53,37 @@ from experiments.robot.unc_utils import (
     compute_samples_uncertainty_metrics,
 )
 
+DEFAULT_HIDDEN_STATE_LAYER_STRIDE = 4
+
+def get_hidden_state_layer_numbers(num_transformer_layers: int) -> tuple[int, ...]:
+    """Return one-based transformer layer numbers to save from HF hidden-state tuples."""
+    if num_transformer_layers < 1:
+        raise ValueError(f"Expected at least one transformer layer, got {num_transformer_layers}")
+
+    layer_numbers = [1, *range(DEFAULT_HIDDEN_STATE_LAYER_STRIDE, num_transformer_layers + 1, DEFAULT_HIDDEN_STATE_LAYER_STRIDE)]
+    if layer_numbers[-1] != num_transformer_layers:
+        layer_numbers.append(num_transformer_layers)
+    return tuple(layer_numbers)
+
+
+def extract_selected_hidden_states(all_hidden_states) -> tuple[torch.Tensor, tuple[int, ...]]:
+    """
+    Extract selected transformer-layer activations for each generated action token.
+
+    Hugging Face generation returns one hidden-state tuple per generated token. Each
+    inner tuple includes the embedding output at index 0, then one entry per
+    transformer layer, so one-based layer number N maps directly to tuple index N.
+    """
+    num_transformer_layers = len(all_hidden_states[0]) - 1
+    layer_numbers = get_hidden_state_layer_numbers(num_transformer_layers)
+
+    selected_hidden_states = []
+    for token_hidden_states in all_hidden_states:
+        selected_token_layers = [token_hidden_states[layer_num][0, -1, :] for layer_num in layer_numbers]
+        selected_hidden_states.append(torch.stack(selected_token_layers, dim=0))
+
+    return torch.stack(selected_hidden_states, dim=0), layer_numbers
+
 
 @dataclass
 class GenerateConfig:
@@ -72,7 +103,7 @@ class GenerateConfig:
     attn_implementation: str = "flash_attention_2"   # Only eager attention supports return_attentions, spda will fall back to eager to support it. Options: "flash_attention_2", "sdpa", "eager"
     output_logits: bool = True                       # Whether to output logits from the model
     output_attentions: bool = False                  # Whether to output attention weights from the model
-    output_hidden_states: bool = False               # Whether to output hidden states from the model
+    output_hidden_states: bool = True                # Whether to output hidden states from the model
 
     #################################################################################################################
     # LIBERO environment-specific parameters
@@ -229,6 +260,8 @@ def eval_libero(cfg: GenerateConfig) -> None:
             logs_cum = defaultdict(float)
             pose_cumulator = PoseCumulator()
             hidden_states_episode = []
+            hidden_state_layers = None
+            hidden_state_dim_per_layer = None
             logs_to_dump = []
             
             while t < max_steps + cfg.num_steps_wait:
@@ -278,13 +311,19 @@ def eval_libero(cfg: GenerateConfig) -> None:
                         # generated_outputs['hidden_states'] is a tuple of length 7 (number of generated tokens)
                         # Within which each element is a tuple of length 33 (number of layers)
                         # Each element in the inner tuple is a tensor of shape (bs=1, 1 or N, 4096)
-                        # The final hidden states before decoding is generated_outputs['hidden_states'][0][-1][0, -1, :]
+                        # We save transformer layers 1, 4, 8, ..., 32 for each generated action token.
                         all_hidden_states = generated_outputs['hidden_states']
-                        hidden_states_last_layer = [s[-1][0, -1, :] for s in all_hidden_states]
-                        hidden_states_last_layer = torch.stack(hidden_states_last_layer, dim=0) # (7, 4096)
+                        selected_hidden_states, selected_layer_numbers = extract_selected_hidden_states(all_hidden_states)
+                        # Keep the action-token axis for SAFE's loader and concatenate selected layers into features.
+                        # For OpenVLA-7B this is (7, 9 * 4096), representing layers [1, 4, ..., 32].
+                        hidden_states_selected_layers = selected_hidden_states.flatten(start_dim=1)
+
+                        if hidden_state_layers is None:
+                            hidden_state_layers = selected_layer_numbers
+                            hidden_state_dim_per_layer = selected_hidden_states.shape[-1]
                         
                         # Save the hidden states for further analysis
-                        hidden_states_episode.append(hidden_states_last_layer.detach().cpu())
+                        hidden_states_episode.append(hidden_states_selected_layers.detach().cpu())
                         
 
                     # Normalize gripper action [0,1] -> [-1,+1] because the environment expects the latter
@@ -409,11 +448,15 @@ def eval_libero(cfg: GenerateConfig) -> None:
 
             # Save the hidden states
             if cfg.output_hidden_states:
-                hidden_states_episode = torch.stack(hidden_states_episode, dim=0) # (T, 7, 4096)
+                hidden_states_episode = torch.stack(hidden_states_episode, dim=0) # (T, 7, num_selected_layers * 4096)
                 hidden_states_episode = hidden_states_episode
                 hidden_states_path = mp4_path.with_suffix(".pkl")
                 save_dict = {
                     "hidden_states": hidden_states_episode,
+                    "hidden_state_layers": list(hidden_state_layers),
+                    "hidden_state_layer_stride": DEFAULT_HIDDEN_STATE_LAYER_STRIDE,
+                    "hidden_state_dim_per_layer": hidden_state_dim_per_layer,
+                    "hidden_state_layout": "action_token_axis_then_concatenated_selected_layers",
                     "task_suite_name": cfg.task_suite_name,
                     "task_id": task_id,
                     "task_description": task_description,
