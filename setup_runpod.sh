@@ -2,9 +2,9 @@
 # =============================================================================
 # RunPod setup for SAFE-OpenVLA LIBERO rollout collection.
 #
-# Translates the working Colab flow in SAFE_OpenVLA.ipynb to a RunPod pod,
-# installing straight into the pod's base python (no conda/venv -- RunPod
-# images work best that way):
+# Translates the working Colab flow in SAFE_OpenVLA.ipynb to a RunPod pod.
+# Everything heavy (venv, pip cache, pip tmp, HF cache) lives on the /workspace
+# volume disk -- the container disk is too small and fills up otherwise:
 #   1. apt packages for headless MuJoCo/EGL rendering
 #   2. torch 2.2.0 cu121 first, then the pinned dependency stack
 #   3. flash-attn 2.5.5 (--no-build-isolation, after torch is in place)
@@ -29,9 +29,36 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OPENVLA_DIR="$SCRIPT_DIR"
 LIBERO_DIR="$ROOT_DIR/LIBERO"
 DLIMP_DIR="$ROOT_DIR/dlimp"
+VENV_DIR="$ROOT_DIR/venv"
+
+# Keep pip's build scratch off the small container disk, and skip the wheel
+# cache entirely -- a cached copy of the ~2.5GB torch wheel doubles disk use
+# for no benefit on a pod.
+export TMPDIR="$ROOT_DIR/tmp"
+export PIP_NO_CACHE_DIR=1
+mkdir -p "$TMPDIR"
+trap 'rm -rf "$TMPDIR"/pip-* 2>/dev/null || true' EXIT
+
+# Fail fast with a clear message instead of dying mid-install with Errno 28.
+# Rough needs: venv ~15GB + HF checkpoint ~15GB + rollouts on top.
+echo ">>> Disk usage:"
+df -h / "$ROOT_DIR"
+FREE_GB=$(df -Pk "$ROOT_DIR" | awk 'NR==2 {print int($4/1048576)}')
+if [ "$FREE_GB" -lt 40 ]; then
+    echo "ERROR: only ${FREE_GB}GB free on $ROOT_DIR. The env + checkpoint need"
+    echo "~30GB before any rollouts are saved. Resize the pod's VOLUME disk"
+    echo "(>=100GB recommended for rollout collection) and re-run."
+    exit 1
+fi
+
+# Virtual env on the volume disk so packages don't land on the container disk.
+[ -d "$VENV_DIR" ] || python -m venv "$VENV_DIR"
+source "$VENV_DIR/bin/activate"
+pip install --upgrade pip
 
 echo ">>> openvla repo: $OPENVLA_DIR"
 echo ">>> install root: $ROOT_DIR"
+echo ">>> venv: $VENV_DIR"
 echo ">>> python: $(which python) ($(python --version 2>&1))"
 # Stack is pinned against python 3.10; 3.11 usually works too. Warn otherwise.
 python - <<'PY'
@@ -102,6 +129,7 @@ touch "$LIBERO_DIR/libero/__init__.py"
 # --- 8. Environment file to source before collecting data ---------------------
 cat > "$OPENVLA_DIR/env_runpod.sh" <<EOF
 # source this before running rollout collection
+source $VENV_DIR/bin/activate
 export MUJOCO_GL=egl
 export PYOPENGL_PLATFORM=egl
 export MPLBACKEND=Agg
