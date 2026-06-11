@@ -65,11 +65,18 @@ pip install \
     pandas scikit-learn "imageio[ffmpeg]" robosuite==1.4.0 bddl easydict \
     cloudpickle gym bitsandbytes
 
-# --- 5. Flash Attention 2 (after torch; never with build isolation) -----------
+# --- 5. Flash Attention 2 (after torch) ----------------------------------------
+# Use the prebuilt wheel from the GitHub release -- no nvcc compile (~minutes
+# saved). Built against cu122/torch2.2, which is the official pairing for any
+# torch 2.2.x cu12x install (flash-attn's own setup.py maps cu121 -> cu122 wheel).
 pip install packaging ninja
-ninja --version
-pip cache remove flash_attn 2>/dev/null || true
-pip install "flash-attn==2.5.5" --no-build-isolation
+CPTAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
+FA_WHEEL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.5/flash_attn-2.5.5+cu122torch2.2cxx11abiFALSE-${CPTAG}-${CPTAG}-linux_x86_64.whl"
+pip install "$FA_WHEEL" || {
+    echo ">>> Prebuilt wheel unavailable for $CPTAG; falling back to source build."
+    pip cache remove flash_attn 2>/dev/null || true
+    pip install "flash-attn==2.5.5" --no-build-isolation
+}
 
 # --- 6. Editable installs WITHOUT dependency solving --------------------------
 # (lesson from Colab: letting pip resolve these drifts the NumPy/TF pins)
