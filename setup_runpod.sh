@@ -1,3 +1,4 @@
+  GNU nano 6.2                                                                                                                                    setup_runpod.sh *                                                                                                                                           
 #!/usr/bin/env bash
 # =============================================================================
 # RunPod setup for SAFE-OpenVLA LIBERO rollout collection.
@@ -79,30 +80,28 @@ apt-get install -y -qq \
 [ -d "$LIBERO_DIR" ] || git clone https://github.com/Lifelong-Robot-Learning/LIBERO.git "$LIBERO_DIR"
 [ -d "$DLIMP_DIR" ]  || git clone https://github.com/kvablack/dlimp "$DLIMP_DIR"
 
-# --- 3. PyTorch first (cu121, exact pins from requirements.txt) ---------------
-pip install torch==2.2.0 torchvision==0.17.0 torchaudio==2.2.0 \
-    --index-url https://download.pytorch.org/whl/cu121
+# --- 3. PyTorch first (cu124, matching runpod/pytorch:2.4.0-cuda12.4.1 image) -
+pip install torch==2.4.0 torchvision==0.19.0 torchaudio==2.4.0 \
+    --index-url https://download.pytorch.org/whl/cu124
 
 # --- 4. Pinned dependency stack (general + LIBERO extras, like the Colab) -----
 pip install \
     accelerate draccus==0.8.0 einops huggingface_hub json-numpy jsonlines \
     matplotlib peft==0.11.1 protobuf rich sentencepiece==0.1.99 timm==0.9.10 \
     tokenizers==0.19.1 transformers==4.40.1 wandb \
-    tensorflow==2.15.0 tensorflow-datasets==4.9.3 tensorflow-graphics==2021.12.3 \
+    tensorflow==2.15.0 tensorflow-datasets==4.9.3 tensorflow-graphics==2021.12.3 tensorflow-metadata==1.13.1 \
     pandas scikit-learn "imageio[ffmpeg]" robosuite==1.4.0 bddl easydict \
     cloudpickle gym bitsandbytes
 
 # --- 5. Flash Attention 2 (after torch) ----------------------------------------
-# Use the prebuilt wheel from the GitHub release -- no nvcc compile (~minutes
-# saved). Built against cu122/torch2.2, which is the official pairing for any
-# torch 2.2.x cu12x install (flash-attn's own setup.py maps cu121 -> cu122 wheel).
+# Prebuilt wheel for cu124/torch2.4, matching the runpod/pytorch:2.4.0-cuda12.4.1 image.
 pip install packaging ninja
 CPTAG="cp$(python -c 'import sys; print(f"{sys.version_info.major}{sys.version_info.minor}")')"
-FA_WHEEL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.5.5/flash_attn-2.5.5+cu122torch2.2cxx11abiFALSE-${CPTAG}-${CPTAG}-linux_x86_64.whl"
+FA_WHEEL="https://github.com/Dao-AILab/flash-attention/releases/download/v2.6.3/flash_attn-2.6.3+cu124torch2.4cxx11abiFALSE-${CPTAG}-${CPTAG}-linux_x86_64.whl"
 pip install "$FA_WHEEL" || {
     echo ">>> Prebuilt wheel unavailable for $CPTAG; falling back to source build."
     pip cache remove flash_attn 2>/dev/null || true
-    pip install "flash-attn==2.5.5" --no-build-isolation
+    pip install "flash-attn==2.6.3" --no-build-isolation
 }
 
 # --- 6. Editable installs WITHOUT dependency solving --------------------------
